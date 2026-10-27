@@ -1,5 +1,6 @@
 package com.example.epubreader
 
+import androidx.compose.foundation.layout.PaddingValues
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -56,6 +57,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 // import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.TextButton
 
 
 
@@ -122,6 +126,13 @@ class MainActivity : ComponentActivity() {
 
     private var errorMessage by mutableStateOf<String?>(null)
 
+    private var bookSession: EpubParser.BookSession? = null
+
+    private var currentChapter = 0
+
+    private var showChapterList = false
+
+    private var bookInfo by mutableStateOf<EpubParser.BookInfo?>(null)
     private var darkMode by mutableStateOf(false)
 
     override fun onCreate(
@@ -226,6 +237,7 @@ class MainActivity : ComponentActivity() {
                         preferences.edit()
                             .putBoolean("dark_mode", enabled)
                             .apply()
+
                     },
 
                     onOpenEpub = {
@@ -252,6 +264,17 @@ class MainActivity : ComponentActivity() {
                                 )
                                 .apply()
                         }
+                    },
+                    chapterTitles = bookSession?.bookInfo?.chapters
+                        ?.map { it.title }
+                        ?: emptyList(),
+
+                    onChapterSelected = { index ->
+                        preferences.edit()
+                            .putInt("chapter_$selectedEpubUri", index)
+                            .apply()
+
+                        loadChapter(index)
                     }
                 )
             }
@@ -263,63 +286,107 @@ class MainActivity : ComponentActivity() {
     // LAST INN EPUB
     // =====================================================
 
-    private fun loadEpub(uri: Uri) {
 
-        CoroutineScope(
-            Dispatchers.IO
-        ).launch {
+    private fun loadEpub(uri: Uri) {
+        isLoading = true
+        errorMessage = null
+
+        CoroutineScope(Dispatchers.IO).launch {
+            var newSession: EpubParser.BookSession? = null
 
             try {
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw Exception("Kunne ikke åpne EPUB-filen.")
 
-                val loadedText =
-                    contentResolver
-                        .openInputStream(uri)
-                        ?.use { input ->
+                newSession = EpubParser.openSession(input)
 
-                            EpubParser.parse(
-                                input
-                            )
+                val info = newSession.bookInfo
 
-                        }
-                        ?: throw Exception(
-                            "Kunne ikke åpne EPUB-filen."
-                        )
-
-                withContext(
-                    Dispatchers.Main
-                ) {
-
-                    bookText = loadedText
-
-                    isLoading = false
-
-                    errorMessage =
-                        if (loadedText.isBlank()) {
-                            "Fant ingen tekst i EPUB-filen."
-                        } else {
-                            null
-                        }
+                if (info.chapters.isEmpty()) {
+                    throw Exception("Fant ingen kapitler i EPUB-filen.")
                 }
 
-            } catch (e: Exception) {
+                // Hent sist leste kapittel for denne EPUB-filen
+                val savedChapter = preferences.getInt(
+                    "chapter_$uri",
+                    0
+                ).coerceIn(0, info.chapters.lastIndex)
 
-                withContext(
-                    Dispatchers.Main
-                ) {
+                // Last det lagrede kapittelet
+                val chapterText = newSession.loadChapter(savedChapter)
 
-                    bookText = ""
+                // Hent sist leste side for denne EPUB-filen
+                val savedPage = preferences.getInt(
+                    "page_$uri",
+                    0
+                )
 
-                    currentPage = 0
+                withContext(Dispatchers.Main) {
+                    bookSession?.close()
+                    bookSession = newSession
 
+                    currentChapter = savedChapter
+                    bookText = chapterText
+                    currentPage = savedPage
                     isLoading = false
 
+                    errorMessage = if (chapterText.isBlank()) {
+                        "Fant ingen tekst i dette kapittelet."
+                    } else {
+                        null
+                    }
+                }
+            } catch (e: Exception) {
+                newSession?.close()
+
+                withContext(Dispatchers.Main) {
+                    bookText = ""
+                    currentPage = 0
+                    isLoading = false
                     errorMessage =
                         "Kunne ikke lese EPUB-filen:\n${e.message}"
                 }
             }
         }
     }
+    private fun loadChapter(chapterIndex: Int) {
+        val session = bookSession ?: return
+        val chapters = session.bookInfo.chapters
+
+        if (chapterIndex !in chapters.indices) return
+
+        isLoading = true
+        errorMessage = null
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val chapterText = session.loadChapter(chapterIndex)
+
+                withContext(Dispatchers.Main) {
+                    currentChapter = chapterIndex
+                    currentPage = 0
+                    bookText = chapterText
+                    isLoading = false
+
+                    errorMessage = if (chapterText.isBlank()) {
+                        "Fant ingen tekst i dette kapittelet."
+                    } else {
+                        null
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                    errorMessage =
+                        "Kunne ikke lese kapittelet:\n${e.message}"
+                }
+            }
+        }
+    }
 }
+
+
+
 
 
 // =========================================================
@@ -338,7 +405,9 @@ fun ReaderScreen(
     preferences: android.content.SharedPreferences,
     onPageChanged: (Int) -> Unit,
     darkMode: Boolean,
-    onDarkModeChanged: (Boolean) -> Unit
+    onDarkModeChanged: (Boolean) -> Unit,
+    chapterTitles: List<String>,
+    onChapterSelected: (Int) -> Unit
 ) {
 
     var totalDrag by remember {
@@ -387,6 +456,9 @@ fun ReaderScreen(
             emptyList()
         )
     }
+
+    var showChapterList by remember { mutableStateOf(false) }
+
 
     // -----------------------------------------------------
     // Lag sidene når:
@@ -455,21 +527,44 @@ fun ReaderScreen(
             // -------------------------------------------------
 
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
-                    onClick = onOpenEpub
+                    onClick = onOpenEpub,
+                    contentPadding = PaddingValues(
+                        horizontal = 6.dp,
+                        vertical = 4.dp
+                    )
                 ) {
-                    Text("Åpne EPUB")
+                    Text("Åpne")
+                }
+
+                Button(
+                    onClick = {
+                        showChapterList = !showChapterList
+
+                    },
+                    contentPadding = PaddingValues(
+                        horizontal = 6.dp,
+                        vertical = 4.dp
+                    )
+                ) {
+                    Text("Kapitler")
                 }
 
                 Button(
                     onClick = {
                         onDarkModeChanged(!darkMode)
-                    }
+
+                    },
+                    contentPadding = PaddingValues(
+                        horizontal = 6.dp,
+                        vertical = 4.dp
+                    )
                 ) {
                     Text(
-                        if (darkMode) "☀ Lys" else "🌙 Mørk"
+                        if (darkMode) "☀" else "🌙"
                     )
                 }
                 Button(
@@ -480,7 +575,12 @@ fun ReaderScreen(
                                 .putInt("font_size", fontSize)
                                 .apply()
                         }
-                    }
+
+                    },
+                    contentPadding = PaddingValues(
+                        horizontal = 6.dp,
+                        vertical = 4.dp
+                    )
                 ) {
                     Text("−")
                 }
@@ -491,8 +591,13 @@ fun ReaderScreen(
                             preferences.edit()
                                 .putInt("font_size", fontSize)
                                 .apply()
+
                         }
-                    }
+                    },
+                    contentPadding = PaddingValues(
+                        horizontal = 6.dp,
+                        vertical = 4.dp
+                    )
                 ) {
                     Text("+")
                 }
@@ -512,6 +617,43 @@ fun ReaderScreen(
 
                     fontSize = 16.sp
                 )
+            }
+            if (showChapterList) {
+                Button(
+                    onClick = {
+                        showChapterList = false
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
+                ) {
+                    Text("Tilbake til lesing")
+                }
+            }
+            if (showChapterList && chapterTitles.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(8.dp)
+                ) {
+                    chapterTitles.forEachIndexed { index, title ->
+                        TextButton(
+                            onClick = {
+                                onChapterSelected(index)
+                                showChapterList = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "${index + 1}. $title",
+                                color = if (darkMode) Color.White else Color.Black,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
             }
 
 
@@ -944,6 +1086,208 @@ private fun findForcedBreak(
 
 object EpubParser {
 
+    data class BookInfo(
+        val title: String = "",
+        val author: String = "",
+        val category: String = "",
+        val description: String = "",
+        val chapters: List<ChapterInfo> = emptyList()
+    )
+
+    data class ChapterInfo(
+        val id: String,
+        val title: String,
+        val href: String
+    )
+
+
+
+    class BookSession internal constructor(
+        private val tempFile: File,
+        private val zip: ZipFile,
+        private val opfDirectory: String,
+        private val spine: List<ManifestItem>,
+        val bookInfo: BookInfo
+    ) : java.io.Closeable {
+
+        fun loadChapter(chapterIndex: Int): String {
+            require(chapterIndex in spine.indices) {
+                "Ugyldig kapittelnummer: $chapterIndex"
+            }
+
+            val item = spine[chapterIndex]
+            android.util.Log.d(
+                "EpubReader",
+                "Kapittel ${chapterIndex + 1}: id=${item.id}, href=${item.href}"
+            )
+            val path = if (opfDirectory.isEmpty()) {
+                item.href
+            } else {
+                "$opfDirectory/${item.href}"
+            }
+
+            val normalizedPath = EpubParser.normalizePath(path)
+            val entry = zip.getEntry(normalizedPath)
+                ?: throw Exception("Fant ikke kapittelfilen: $normalizedPath")
+            //android.util.Log.d(
+            //    "EpubReader",
+            //    "Kapitteltekst før visning: ${EpubParser.readXhtml(zip.getInputStream(entry))}"
+            //)
+            val chapterText = zip.getInputStream(entry).use {
+                EpubParser.readXhtml(it)
+            }
+
+            val title = bookInfo.chapters[chapterIndex].title
+
+            return if (
+                title.isNotBlank() &&
+                chapterText.startsWith("$title $title")
+            ) {
+                chapterText.removePrefix("$title ")
+            } else {
+                chapterText
+            }
+        }
+
+        override fun close() {
+            try {
+                zip.close()
+            } finally {
+                tempFile.delete()
+            }
+        }
+    }
+
+
+
+    private data class EpubStructure(
+        val opfPath: String,
+        val opfDirectory: String,
+        val manifest: Map<String, ManifestItem>,
+        val spine: List<ManifestItem>
+    )
+
+
+    fun openSession(input: InputStream): BookSession {
+        val tempFile = File.createTempFile("epub_session_", ".epub")
+        var openedZip: ZipFile? = null
+
+        try {
+            input.use { source ->
+                tempFile.outputStream().use { target ->
+                    source.copyTo(target)
+                }
+            }
+
+            val zip = ZipFile(tempFile)
+            openedZip = zip
+
+            val containerEntry = zip.getEntry("META-INF/container.xml")
+                ?: throw Exception("Fant ikke META-INF/container.xml")
+
+            val rootFile = zip.getInputStream(containerEntry).use {
+                readContainer(it)
+            }
+
+            val opfDirectory = rootFile.substringBeforeLast("/", "")
+            val opfEntry = zip.getEntry(rootFile)
+                ?: throw Exception("Fant ikke content.opf")
+
+            var title = ""
+            var author = ""
+            var category = ""
+            var description = ""
+
+            zip.getInputStream(opfEntry).use { opfInput ->
+                val parser = Xml.newPullParser()
+                parser.setInput(opfInput, null)
+
+                while (parser.next() != XmlPullParser.END_DOCUMENT) {
+                    if (parser.eventType == XmlPullParser.START_TAG) {
+                        when (parser.name) {
+                            "title" -> title = parser.nextText().trim()
+                            "creator" -> author = parser.nextText().trim()
+                            "subject" -> category = parser.nextText().trim()
+                            "description" -> description = parser.nextText().trim()
+                        }
+                    }
+                }
+            }
+
+            val spine = zip.getInputStream(opfEntry).use {
+                readOpf(it)
+            }
+
+            val chapters = spine.mapIndexed { index, item ->
+                val path = if (opfDirectory.isEmpty()) {
+                    item.href
+                } else {
+                    "$opfDirectory/${item.href}"
+                }
+
+                val normalizedPath = normalizePath(path)
+                val entry = zip.getEntry(normalizedPath)
+
+                val chapterTitle = if (entry == null) {
+                    ""
+                } else {
+                    zip.getInputStream(entry).use { chapterInput ->
+                        val parser = Xml.newPullParser()
+                        parser.setInput(chapterInput, null)
+
+                        var foundTitle = ""
+
+                        while (parser.next() != XmlPullParser.END_DOCUMENT) {
+                            if (
+                                parser.eventType == XmlPullParser.START_TAG &&
+                                parser.name.equals("title", ignoreCase = true)
+                            ) {
+                                foundTitle = parser.nextText().trim()
+                                if (foundTitle.isNotBlank()) break
+                            }
+                        }
+
+                        foundTitle
+                    }
+                }
+
+                ChapterInfo(
+                    id = item.id,
+                    title = chapterTitle.ifBlank {
+                        "Kapittel ${index + 1}"
+                    },
+                    href = item.href
+                )
+            }
+            android.util.Log.d(
+                "EpubReader",
+                "Antall kapitler: ${chapters.size}"
+            )
+            val bookInfo = BookInfo(
+                title = title,
+                author = author,
+                category = category,
+                description = description,
+                chapters = chapters
+            )
+
+            return BookSession(
+                tempFile = tempFile,
+                zip = zip,
+                opfDirectory = opfDirectory,
+                spine = spine,
+                bookInfo = bookInfo
+            )
+        } catch (e: Exception) {
+            try {
+                openedZip?.close()
+            } finally {
+                tempFile.delete()
+            }
+            throw e
+        }
+    }
+
     fun parse(
         input: InputStream
     ): String {
@@ -1088,6 +1432,150 @@ object EpubParser {
         }
     }
 
+    fun readBookInfo(input: InputStream): BookInfo {
+        val tempFile = File.createTempFile("epub_info_", ".epub")
+
+        try {
+            input.use { source ->
+                tempFile.outputStream().use { target ->
+                    source.copyTo(target)
+                }
+            }
+
+            ZipFile(tempFile).use { zip ->
+                val containerEntry = zip.getEntry("META-INF/container.xml")
+                    ?: throw Exception("Fant ikke META-INF/container.xml")
+
+                val rootFile = readContainer(zip.getInputStream(containerEntry))
+                val opfDirectory = rootFile.substringBeforeLast("/", "")
+                val opfEntry = zip.getEntry(rootFile)
+                    ?: throw Exception("Fant ikke content.opf")
+
+                val parser = Xml.newPullParser()
+                zip.getInputStream(opfEntry).use { opfInput ->
+                    parser.setInput(opfInput, null)
+
+                    var title = ""
+                    var author = ""
+                    var category = ""
+                    var description = ""
+
+                    while (parser.next() != XmlPullParser.END_DOCUMENT) {
+                        if (parser.eventType == XmlPullParser.START_TAG) {
+                            when (parser.name) {
+                                "title" -> title = parser.nextText().trim()
+                                "creator" -> author = parser.nextText().trim()
+                                "subject" -> category = parser.nextText().trim()
+                                "description" -> description = parser.nextText().trim()
+                            }
+                        }
+                    }
+
+                    val spine = zip.getInputStream(opfEntry).use { readOpf(it) }
+
+                    val chapters = spine.mapIndexedNotNull { index, item ->
+                        val path = if (opfDirectory.isEmpty()) {
+                            item.href
+                        } else {
+                            "$opfDirectory/${item.href}"
+                        }
+
+                        val normalizedPath = normalizePath(path)
+                        val entry = zip.getEntry(normalizedPath) ?: return@mapIndexedNotNull null
+
+                        val chapterTitle = zip.getInputStream(entry).use { chapterInput ->
+                            val chapterParser = Xml.newPullParser()
+                            chapterParser.setInput(chapterInput, null)
+
+                            var foundTitle = ""
+                            while (chapterParser.next() != XmlPullParser.END_DOCUMENT) {
+                                if (chapterParser.eventType == XmlPullParser.START_TAG &&
+                                    chapterParser.name.equals("title", ignoreCase = true)
+                                ) {
+                                    foundTitle = chapterParser.nextText().trim()
+                                    if (foundTitle.isNotBlank()) break
+                                }
+                            }
+                            foundTitle
+                        }
+
+                        ChapterInfo(
+                            id = item.id,
+                            title = chapterTitle.ifBlank { "Kapittel ${index + 1}" },
+                            href = item.href
+                        )
+                    }
+
+                    return BookInfo(
+                        title = title,
+                        author = author,
+                        category = category,
+                        description = description,
+                        chapters = chapters
+                    )
+                }
+            }
+        } finally {
+            tempFile.delete()
+        }
+    }
+
+
+    fun loadChapter(input: InputStream, chapterIndex: Int): String {
+        require(chapterIndex >= 0) {
+            "Ugyldig kapittelnummer: $chapterIndex"
+        }
+
+        val tempFile = File.createTempFile("epub_chapter_", ".epub")
+
+        try {
+            input.use { source ->
+                tempFile.outputStream().use { target ->
+                    source.copyTo(target)
+                }
+            }
+
+            ZipFile(tempFile).use { zip ->
+                val containerEntry = zip.getEntry("META-INF/container.xml")
+                    ?: throw Exception("Fant ikke META-INF/container.xml")
+
+                val rootFile = zip.getInputStream(containerEntry).use {
+                    readContainer(it)
+                }
+
+                val opfDirectory = rootFile.substringBeforeLast("/", "")
+                val opfEntry = zip.getEntry(rootFile)
+                    ?: throw Exception("Fant ikke content.opf")
+
+                val spine = zip.getInputStream(opfEntry).use {
+                    readOpf(it)
+                }
+
+                if (chapterIndex !in spine.indices) {
+                    throw Exception("Kapittelnummeret finnes ikke: $chapterIndex")
+                }
+
+                val item = spine[chapterIndex]
+
+                val path = if (opfDirectory.isEmpty()) {
+                    item.href
+                } else {
+                    "$opfDirectory/${item.href}"
+                }
+
+                val normalizedPath = normalizePath(path)
+                val chapterEntry = zip.getEntry(normalizedPath)
+                    ?: throw Exception("Fant ikke kapittelfilen: $normalizedPath")
+
+                return zip.getInputStream(chapterEntry).use {
+                    readXhtml(it)
+                }
+            }
+        } finally {
+            tempFile.delete()
+        }
+    }
+
 
     // =====================================================
     // container.xml
@@ -1138,7 +1626,7 @@ object EpubParser {
     // content.opf
     // =====================================================
 
-    private data class ManifestItem(
+    internal data class ManifestItem(
         val id: String,
         val href: String,
         val mediaType: String
@@ -1253,17 +1741,16 @@ object EpubParser {
             if (
                 item != null &&
                 (
-                        item.mediaType ==
-                                "application/xhtml+xml" ||
-                                item.mediaType ==
-                                "text/html"
-                        )
+                        item.mediaType == "application/xhtml+xml" ||
+                                item.mediaType == "text/html"
+                        ) &&
+                !item.href.substringAfterLast("/").equals(
+                    "nav.xhtml",
+                    ignoreCase = true
+                )
             ) {
-
                 item
-
             } else {
-
                 null
             }
         }
