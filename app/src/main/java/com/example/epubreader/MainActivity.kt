@@ -103,7 +103,7 @@ class MainActivity : ComponentActivity() {
                 selectedEpubUri = uriString
 
                 selectedEpubName =
-                    uri.lastPathSegment ?: "Ukjent fil"
+                    uri.lastPathSegment ?: "Uknown fil"
 
                 currentPage = 0
                 bookText = ""
@@ -152,7 +152,7 @@ class MainActivity : ComponentActivity() {
 
 
         // -------------------------------------------------
-        // Hent sist valgte EPUB
+        // Retrieve last selected EPUB
         // -------------------------------------------------
 
         val savedUri =
@@ -177,7 +177,7 @@ class MainActivity : ComponentActivity() {
 
                         selectedEpubName =
                             uri.lastPathSegment
-                                ?: "Ukjent fil"
+                                ?: "Uknown fil"
 
                         currentPage =
                             preferences.getInt(
@@ -283,7 +283,7 @@ class MainActivity : ComponentActivity() {
 
 
     // =====================================================
-    // LAST INN EPUB
+    // READ EPUB FILE
     // =====================================================
 
 
@@ -296,26 +296,26 @@ class MainActivity : ComponentActivity() {
 
             try {
                 val input = contentResolver.openInputStream(uri)
-                    ?: throw Exception("Kunne ikke åpne EPUB-filen.")
+                    ?: throw Exception("Could not open EPUB-file.")
 
                 newSession = EpubParser.openSession(input)
 
                 val info = newSession.bookInfo
 
                 if (info.chapters.isEmpty()) {
-                    throw Exception("Fant ingen kapitler i EPUB-filen.")
+                    throw Exception("No chapter in EPUB-fil.")
                 }
 
-                // Hent sist leste kapittel for denne EPUB-filen
+                // Retrieve last read chapter EPUB-fil
                 val savedChapter = preferences.getInt(
                     "chapter_$uri",
                     0
                 ).coerceIn(0, info.chapters.lastIndex)
 
-                // Last det lagrede kapittelet
+                // Fetch saved chapter
                 val chapterText = newSession.loadChapter(savedChapter)
 
-                // Hent sist leste side for denne EPUB-filen
+                // Fetch last read page for this EPUB-file
                 val savedPage = preferences.getInt(
                     "page_$uri",
                     0
@@ -331,7 +331,7 @@ class MainActivity : ComponentActivity() {
                     isLoading = false
 
                     errorMessage = if (chapterText.isBlank()) {
-                        "Fant ingen tekst i dette kapittelet."
+                        "No text in this chapter."
                     } else {
                         null
                     }
@@ -344,7 +344,7 @@ class MainActivity : ComponentActivity() {
                     currentPage = 0
                     isLoading = false
                     errorMessage =
-                        "Kunne ikke lese EPUB-filen:\n${e.message}"
+                        "Could not read  EPUB-file:\n${e.message}"
                 }
             }
         }
@@ -369,7 +369,7 @@ class MainActivity : ComponentActivity() {
                     isLoading = false
 
                     errorMessage = if (chapterText.isBlank()) {
-                        "Fant ingen tekst i dette kapittelet."
+                        "No text in this chapter."
                     } else {
                         null
                     }
@@ -378,7 +378,7 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.Main) {
                     isLoading = false
                     errorMessage =
-                        "Kunne ikke lese kapittelet:\n${e.message}"
+                        "Could not read chapter:\n${e.message}"
                 }
             }
         }
@@ -417,7 +417,7 @@ fun ReaderScreen(
 
 
     // -----------------------------------------------------
-    // Tekstmåler
+    // TextMeasurer
     // -----------------------------------------------------
 
     val textMeasurer =
@@ -436,7 +436,7 @@ fun ReaderScreen(
         )
 
     // -----------------------------------------------------
-    // Her lagres størrelsen på det faktiske leseområdet.
+    // Here the actual size for reading area is saved
     // -----------------------------------------------------
 
     var readerWidth by remember {
@@ -448,7 +448,7 @@ fun ReaderScreen(
     }
 
     // -----------------------------------------------------
-    // Sider som er beregnet ut fra skjermstørrelsen.
+    // Pages that is calculated from screen size
     // -----------------------------------------------------
 
     var pages by remember {
@@ -461,10 +461,10 @@ fun ReaderScreen(
 
 
     // -----------------------------------------------------
-    // Lag sidene når:
+    // Create page when:
     //
-    // - EPUB-teksten endres
-    // - leseområdet endrer størrelse
+    // - EPUB-text chages
+    // - reading area change size
     // -----------------------------------------------------
 
     LaunchedEffect(bookText, readerWidth, readerHeight, fontSize) {
@@ -485,7 +485,7 @@ fun ReaderScreen(
 
 
     // -----------------------------------------------------
-    // Pass på at lagret side er gyldig etter ny paginering.
+    // Ensure that the stored page remains valid after re-pagination.
     // -----------------------------------------------------
 
     val safePage =
@@ -521,9 +521,9 @@ fun ReaderScreen(
         ) {
 
             // -------------------------------------------------
-            // KNAPP
+            // Button
             //
-            // Ingen swipe-deteksjon her.
+            // No swipe detection here.
             // -------------------------------------------------
 
             Row(
@@ -537,7 +537,7 @@ fun ReaderScreen(
                         vertical = 4.dp
                     )
                 ) {
-                    Text("Åpne")
+                    Text("Open")
                 }
 
                 Button(
@@ -550,7 +550,7 @@ fun ReaderScreen(
                         vertical = 4.dp
                     )
                 ) {
-                    Text("Kapitler")
+                    Text("Chapters")
                 }
 
                 Button(
@@ -627,7 +627,7 @@ fun ReaderScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 8.dp)
                 ) {
-                    Text("Tilbake til lesing")
+                    Text("Back to reading")
                 }
             }
             if (showChapterList && chapterTitles.isNotEmpty()) {
@@ -658,7 +658,7 @@ fun ReaderScreen(
 
 
             // -------------------------------------------------
-            // LESEOMRÅDE
+            // READING AREA
             // -------------------------------------------------
 
             Box(
@@ -705,8 +705,8 @@ fun ReaderScreen(
                                     -swipeThreshold
                                 ) {
 
-                                    // Venstre =
-                                    // neste side
+                                    // Left =
+                                    // next page
 
                                     if (
                                         safePage <
@@ -723,8 +723,8 @@ fun ReaderScreen(
                                     swipeThreshold
                                 ) {
 
-                                    // Høyre =
-                                    // forrige side
+                                    // Right =
+                                    // Previous page
 
                                     if (
                                         safePage > 0
@@ -754,7 +754,7 @@ fun ReaderScreen(
 
                         Text(
                             text =
-                                "Laster EPUB ...",
+                                "Loading EPUB ...",
 
                             modifier =
                                 Modifier
@@ -795,7 +795,7 @@ fun ReaderScreen(
 
                             Text(
                                 text =
-                                    "Velg en EPUB-fil for å begynne å lese.",
+                                    "Select an EPUB-file for start reading.",
 
                                 modifier =
                                     Modifier
@@ -834,12 +834,9 @@ fun ReaderScreen(
 
 
         // -----------------------------------------------------
-        // SIDETALL
+        // PAGE NUMBER
         // -----------------------------------------------------
-        //Text(
-        //    text = "TEST: ${bookText.length} tegn, ${pages.size} sider",
-        //    modifier = Modifier.padding(8.dp)
-        //)
+
 
         if (pages.isNotEmpty()) {
 
@@ -866,7 +863,7 @@ fun ReaderScreen(
 
 
 // =========================================================
-// SKJERMBASERT PAGINERING
+// Screen based pagination
 // =========================================================
 
 private fun paginateText(
@@ -881,7 +878,7 @@ private fun paginateText(
         return emptyList()
     }
 
-    // Litt plass reserveres nederst til sidetallet.
+    // Reserve some space at the bottom for page numbers.
 
     val availableHeight =
         (height - 100).coerceAtLeast(1)
@@ -899,7 +896,7 @@ private fun paginateText(
 
     while (start < text.length) {
 
-        // Prøv resten av teksten først.
+        // Try the rest of the text first.
         var low = start + 1
         var high = text.length
         var bestEnd = start + 1
@@ -923,7 +920,7 @@ private fun paginateText(
             }
         }
 
-        // Pass på at vi ikke stopper midt i et ord.
+        // Make sure we don't stop in the middle of a word.
         var end = bestEnd
 
         if (end < text.length) {
@@ -934,7 +931,7 @@ private fun paginateText(
             }
         }
 
-        // Sikkerhetskontroll slik at vi alltid kommer videre.
+        // Safety check to ensure we can always proceed.
         if (end <= start) {
             end = minOf(start + 1, text.length)
         }
@@ -945,7 +942,7 @@ private fun paginateText(
 
         start = end
 
-        // Hopp over mellomrom etter sideskift.
+        // Skip whitespace after a page break.
         while (start < text.length && text[start].isWhitespace()) {
             start++
         }
@@ -955,7 +952,7 @@ private fun paginateText(
 }
 
 // =========================================================
-// Finn naturlig ordskille
+// Find natural word break
 // =========================================================
 
 private fun findWordBoundary(
@@ -976,8 +973,8 @@ private fun findWordBoundary(
     }
 
     // -----------------------------------------------------
-    // Hvis vi allerede står på et mellomrom, er dette
-    // et naturlig skille.
+    // If we are already positioned at a space, this is
+    // a natural separator.
     // -----------------------------------------------------
 
     if (
@@ -987,7 +984,7 @@ private fun findWordBoundary(
     }
 
     // -----------------------------------------------------
-    // Finn siste mellomrom før foreslått slutt.
+    // Find the last space before the suggested end.
     // -----------------------------------------------------
 
     val lastSpace =
@@ -1019,7 +1016,7 @@ private fun findWordBoundary(
 
 
 // =========================================================
-// Nødutgang for ekstremt lange ord
+// Emergency exit for extremely long words
 // =========================================================
 
 private fun findForcedBreak(
@@ -1112,13 +1109,13 @@ object EpubParser {
 
         fun loadChapter(chapterIndex: Int): String {
             require(chapterIndex in spine.indices) {
-                "Ugyldig kapittelnummer: $chapterIndex"
+                "Invalid chapter number: $chapterIndex"
             }
 
             val item = spine[chapterIndex]
             android.util.Log.d(
                 "EpubReader",
-                "Kapittel ${chapterIndex + 1}: id=${item.id}, href=${item.href}"
+                "Chapter ${chapterIndex + 1}: id=${item.id}, href=${item.href}"
             )
             val path = if (opfDirectory.isEmpty()) {
                 item.href
@@ -1129,10 +1126,7 @@ object EpubParser {
             val normalizedPath = EpubParser.normalizePath(path)
             val entry = zip.getEntry(normalizedPath)
                 ?: throw Exception("Fant ikke kapittelfilen: $normalizedPath")
-            //android.util.Log.d(
-            //    "EpubReader",
-            //    "Kapitteltekst før visning: ${EpubParser.readXhtml(zip.getInputStream(entry))}"
-            //)
+
             val chapterText = zip.getInputStream(entry).use {
                 EpubParser.readXhtml(it)
             }
@@ -1183,7 +1177,7 @@ object EpubParser {
             openedZip = zip
 
             val containerEntry = zip.getEntry("META-INF/container.xml")
-                ?: throw Exception("Fant ikke META-INF/container.xml")
+                ?: throw Exception("Could not find META-INF/container.xml")
 
             val rootFile = zip.getInputStream(containerEntry).use {
                 readContainer(it)
@@ -1191,7 +1185,7 @@ object EpubParser {
 
             val opfDirectory = rootFile.substringBeforeLast("/", "")
             val opfEntry = zip.getEntry(rootFile)
-                ?: throw Exception("Fant ikke content.opf")
+                ?: throw Exception("Could not find content.opf")
 
             var title = ""
             var author = ""
@@ -1254,14 +1248,14 @@ object EpubParser {
                 ChapterInfo(
                     id = item.id,
                     title = chapterTitle.ifBlank {
-                        "Kapittel ${index + 1}"
+                        "Chapter ${index + 1}"
                     },
                     href = item.href
                 )
             }
             android.util.Log.d(
                 "EpubReader",
-                "Antall kapitler: ${chapters.size}"
+                "Number of chapters: ${chapters.size}"
             )
             val bookInfo = BookInfo(
                 title = title,
@@ -1316,7 +1310,7 @@ object EpubParser {
             ZipFile(tempFile).use { zip ->
 
                 // -------------------------------------------------
-                // Finn container.xml
+                // Find container.xml
                 // -------------------------------------------------
 
                 val containerEntry =
@@ -1324,7 +1318,7 @@ object EpubParser {
                         "META-INF/container.xml"
                     )
                         ?: throw Exception(
-                            "Fant ikke META-INF/container.xml"
+                            "Could not find META-INF/container.xml"
                         )
 
 
@@ -1337,7 +1331,7 @@ object EpubParser {
 
 
                 // -------------------------------------------------
-                // Finn content.opf
+                // Find content.opf
                 // -------------------------------------------------
 
                 val opfDirectory =
@@ -1350,7 +1344,7 @@ object EpubParser {
                 val opfEntry =
                     zip.getEntry(rootFile)
                         ?: throw Exception(
-                            "Fant ikke content.opf"
+                            "Could not find content.opf"
                         )
 
 
@@ -1363,7 +1357,7 @@ object EpubParser {
 
 
                 // -------------------------------------------------
-                // Les kapitlene i riktig rekkefølge
+                // Read the chapters in the correct order
                 // -------------------------------------------------
 
                 val allText =
@@ -1444,12 +1438,12 @@ object EpubParser {
 
             ZipFile(tempFile).use { zip ->
                 val containerEntry = zip.getEntry("META-INF/container.xml")
-                    ?: throw Exception("Fant ikke META-INF/container.xml")
+                    ?: throw Exception("Could not find META-INF/container.xml")
 
                 val rootFile = readContainer(zip.getInputStream(containerEntry))
                 val opfDirectory = rootFile.substringBeforeLast("/", "")
                 val opfEntry = zip.getEntry(rootFile)
-                    ?: throw Exception("Fant ikke content.opf")
+                    ?: throw Exception("Could not find content.opf")
 
                 val parser = Xml.newPullParser()
                 zip.getInputStream(opfEntry).use { opfInput ->
@@ -1501,7 +1495,7 @@ object EpubParser {
 
                         ChapterInfo(
                             id = item.id,
-                            title = chapterTitle.ifBlank { "Kapittel ${index + 1}" },
+                            title = chapterTitle.ifBlank { "Chapter ${index + 1}" },
                             href = item.href
                         )
                     }
@@ -1523,7 +1517,7 @@ object EpubParser {
 
     fun loadChapter(input: InputStream, chapterIndex: Int): String {
         require(chapterIndex >= 0) {
-            "Ugyldig kapittelnummer: $chapterIndex"
+            "Chapter number not valid: $chapterIndex"
         }
 
         val tempFile = File.createTempFile("epub_chapter_", ".epub")
@@ -1537,7 +1531,7 @@ object EpubParser {
 
             ZipFile(tempFile).use { zip ->
                 val containerEntry = zip.getEntry("META-INF/container.xml")
-                    ?: throw Exception("Fant ikke META-INF/container.xml")
+                    ?: throw Exception("Could not find META-INF/container.xml")
 
                 val rootFile = zip.getInputStream(containerEntry).use {
                     readContainer(it)
@@ -1545,14 +1539,14 @@ object EpubParser {
 
                 val opfDirectory = rootFile.substringBeforeLast("/", "")
                 val opfEntry = zip.getEntry(rootFile)
-                    ?: throw Exception("Fant ikke content.opf")
+                    ?: throw Exception("Could not find content.opf")
 
                 val spine = zip.getInputStream(opfEntry).use {
                     readOpf(it)
                 }
 
                 if (chapterIndex !in spine.indices) {
-                    throw Exception("Kapittelnummeret finnes ikke: $chapterIndex")
+                    throw Exception("Chapter number does not exist: $chapterIndex")
                 }
 
                 val item = spine[chapterIndex]
@@ -1565,7 +1559,7 @@ object EpubParser {
 
                 val normalizedPath = normalizePath(path)
                 val chapterEntry = zip.getEntry(normalizedPath)
-                    ?: throw Exception("Fant ikke kapittelfilen: $normalizedPath")
+                    ?: throw Exception("Could not find the chapter file: $normalizedPath")
 
                 return zip.getInputStream(chapterEntry).use {
                     readXhtml(it)
@@ -1610,14 +1604,14 @@ object EpubParser {
                     "full-path"
                 )
                     ?: throw Exception(
-                        "Fant ikke sti til content.opf"
+                        "Could not find a path to content.opf"
                     )
             }
         }
 
 
         throw Exception(
-            "Fant ingen rootfile i container.xml"
+            "Found no root file in container.xml"
         )
     }
 
@@ -1868,7 +1862,7 @@ object EpubParser {
 
 
     // =====================================================
-    // Normaliser filsti
+    // Normalize file path
     // =====================================================
 
     private fun normalizePath(
