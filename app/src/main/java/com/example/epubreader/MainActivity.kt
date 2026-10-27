@@ -28,7 +28,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,10 +52,6 @@ import java.io.InputStream
 import java.util.zip.ZipFile
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Row
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-// import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.TextButton
@@ -103,7 +98,7 @@ class MainActivity : ComponentActivity() {
                 selectedEpubUri = uriString
 
                 selectedEpubName =
-                    uri.lastPathSegment ?: "Uknown fil"
+                    uri.lastPathSegment ?: "Unknown fil"
 
                 currentPage = 0
                 bookText = ""
@@ -177,7 +172,7 @@ class MainActivity : ComponentActivity() {
 
                         selectedEpubName =
                             uri.lastPathSegment
-                                ?: "Uknown fil"
+                                ?: "Unknown fil"
 
                         currentPage =
                             preferences.getInt(
@@ -424,7 +419,7 @@ fun ReaderScreen(
         rememberTextMeasurer()
 
     var fontSize by rememberSaveable {
-        mutableStateOf(
+        mutableIntStateOf(
             preferences.getInt("font_size", 20)
         )
     }
@@ -463,7 +458,7 @@ fun ReaderScreen(
     // -----------------------------------------------------
     // Create page when:
     //
-    // - EPUB-text chages
+    // - EPUB-text changes
     // - reading area change size
     // -----------------------------------------------------
 
@@ -608,7 +603,8 @@ fun ReaderScreen(
 
                 Text(
                     text =
-                        "Valgt fil: $selectedEpubName",
+                        "Selected file: $selectedEpubName",
+                    color = if (darkMode) Color.White else Color.Black,
 
                     modifier =
                         Modifier.padding(
@@ -1125,7 +1121,7 @@ object EpubParser {
 
             val normalizedPath = EpubParser.normalizePath(path)
             val entry = zip.getEntry(normalizedPath)
-                ?: throw Exception("Fant ikke kapittelfilen: $normalizedPath")
+                ?: throw Exception("Did not find chapter file: $normalizedPath")
 
             val chapterText = zip.getInputStream(entry).use {
                 EpubParser.readXhtml(it)
