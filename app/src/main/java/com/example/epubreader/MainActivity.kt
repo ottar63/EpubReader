@@ -209,6 +209,7 @@ class MainActivity : ComponentActivity() {
 
                 ReaderScreen(
                     currentPage = currentPage,
+                    currentChapter = currentChapter,
                     bookText = bookText,
                     selectedEpubName =
                         selectedEpubName,
@@ -264,13 +265,22 @@ class MainActivity : ComponentActivity() {
                         ?.map { it.title }
                         ?: emptyList(),
 
+
                     onChapterSelected = { index ->
                         preferences.edit()
                             .putInt("chapter_$selectedEpubUri", index)
                             .apply()
 
                         loadChapter(index)
+                    },
+                    onChapterSelectedAtEnd = { index ->
+                        preferences.edit()
+                            .putInt("chapter_$selectedEpubUri", index)
+                            .apply()
+
+                        loadChapter(index, startAtLastPage = true)
                     }
+
                 )
             }
         }
@@ -344,7 +354,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-    private fun loadChapter(chapterIndex: Int) {
+
+    private fun loadChapter(
+        chapterIndex: Int,
+        startAtLastPage: Boolean = false
+    ) {
         val session = bookSession ?: return
         val chapters = session.bookInfo.chapters
 
@@ -359,7 +373,7 @@ class MainActivity : ComponentActivity() {
 
                 withContext(Dispatchers.Main) {
                     currentChapter = chapterIndex
-                    currentPage = 0
+                    currentPage = if (startAtLastPage) -1 else 0
                     bookText = chapterText
                     isLoading = false
 
@@ -378,6 +392,7 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
 }
 
 
@@ -402,7 +417,9 @@ fun ReaderScreen(
     darkMode: Boolean,
     onDarkModeChanged: (Boolean) -> Unit,
     chapterTitles: List<String>,
-    onChapterSelected: (Int) -> Unit
+    onChapterSelected: (Int) -> Unit,
+    currentChapter: Int,
+    onChapterSelectedAtEnd: (Int) -> Unit
 ) {
 
     var totalDrag by remember {
@@ -462,20 +479,28 @@ fun ReaderScreen(
     // - reading area change size
     // -----------------------------------------------------
 
+
     LaunchedEffect(bookText, readerWidth, readerHeight, fontSize) {
         if (bookText.isBlank() || readerWidth <= 0 || readerHeight <= 0) {
             pages = emptyList()
             return@LaunchedEffect
         }
 
-        pages = paginateText(
+        val newPages = paginateText(
             text = bookText,
             width = readerWidth,
             height = readerHeight,
             textMeasurer = textMeasurer,
             textStyle = textStyle
         )
+
+        pages = newPages
+
+        if (currentPage == -1 && newPages.isNotEmpty()) {
+            onPageChanged(newPages.lastIndex)
+        }
     }
+
 
 
 
@@ -691,47 +716,23 @@ fun ReaderScreen(
                             },
 
                             onDragEnd = {
+                                val swipeThreshold = 100f
 
-                                val swipeThreshold =
-                                    100f
-
-
-                                if (
-                                    totalDrag <
-                                    -swipeThreshold
-                                ) {
-
-                                    // Left =
-                                    // next page
-
-                                    if (
-                                        safePage <
-                                        pages.lastIndex
-                                    ) {
-
-                                        onPageChanged(
-                                            safePage + 1
-                                        )
+                                if (totalDrag < -swipeThreshold) {
+                                    // Sveip fremover
+                                    if (safePage < pages.lastIndex) {
+                                        onPageChanged(safePage + 1)
+                                    } else if (currentChapter < chapterTitles.lastIndex) {
+                                        onChapterSelected(currentChapter + 1)
                                     }
-
-                                } else if (
-                                    totalDrag >
-                                    swipeThreshold
-                                ) {
-
-                                    // Right =
-                                    // Previous page
-
-                                    if (
-                                        safePage > 0
-                                    ) {
-
-                                        onPageChanged(
-                                            safePage - 1
-                                        )
+                                } else if (totalDrag > swipeThreshold) {
+                                    // Sveip bakover
+                                    if (safePage > 0) {
+                                        onPageChanged(safePage - 1)
+                                    } else if (currentChapter > 0) {
+                                        onChapterSelectedAtEnd(currentChapter - 1)
                                     }
                                 }
-
 
                                 totalDrag = 0f
                             },
